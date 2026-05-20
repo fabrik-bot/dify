@@ -28,6 +28,7 @@ class DatasetPermissionTestDataFactory:
 
     @staticmethod
     def create_account_with_tenant(
+        session: Session,
         role: TenantAccountRole = TenantAccountRole.NORMAL,
         tenant: Tenant | None = None,
     ) -> tuple[Account, Tenant]:
@@ -40,11 +41,11 @@ class DatasetPermissionTestDataFactory:
         )
         if tenant is None:
             tenant = Tenant(name=f"tenant-{uuid4()}", status="normal")
-            db.session.add_all([account, tenant])
+            session.add_all([account, tenant])
         else:
-            db.session.add(account)
+            session.add(account)
 
-        db.session.flush()
+        session.flush()
 
         join = TenantAccountJoin(
             tenant_id=tenant.id,
@@ -52,14 +53,15 @@ class DatasetPermissionTestDataFactory:
             role=role,
             current=True,
         )
-        db.session.add(join)
-        db.session.commit()
+        session.add(join)
+        session.commit()
 
         account.current_tenant = tenant
         return account, tenant
 
     @staticmethod
     def create_dataset(
+        session: Session,
         tenant_id: str,
         created_by: str,
         permission: DatasetPermissionEnum = DatasetPermissionEnum.ONLY_ME,
@@ -77,12 +79,13 @@ class DatasetPermissionTestDataFactory:
             provider="vendor",
             retrieval_model={"top_k": 2},
         )
-        db.session.add(dataset)
-        db.session.commit()
+        session.add(dataset)
+        session.commit()
         return dataset
 
     @staticmethod
     def create_dataset_permission(
+        session: Session,
         dataset_id: str,
         account_id: str,
         tenant_id: str,
@@ -95,8 +98,8 @@ class DatasetPermissionTestDataFactory:
             tenant_id=tenant_id,
             has_permission=has_permission,
         )
-        db.session.add(permission)
-        db.session.commit()
+        session.add(permission)
+        session.commit()
         return permission
 
     @staticmethod
@@ -113,24 +116,31 @@ class TestDatasetPermissionServiceGetPartialMemberList:
         Test retrieving partial member list with multiple members.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         user_1, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
         user_2, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
         user_3, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
-        dataset = DatasetPermissionTestDataFactory.create_dataset(tenant.id, owner.id)
+        dataset = DatasetPermissionTestDataFactory.create_dataset(db_session_with_containers, tenant.id, owner.id)
 
         expected_account_ids = [user_1.id, user_2.id, user_3.id]
         for account_id in expected_account_ids:
-            DatasetPermissionTestDataFactory.create_dataset_permission(dataset.id, account_id, tenant.id)
+            DatasetPermissionTestDataFactory.create_dataset_permission(
+                db_session_with_containers, dataset.id, account_id, tenant.id
+            )
 
         # Act
         result = DatasetPermissionService.get_dataset_partial_member_list(dataset.id)
@@ -144,15 +154,20 @@ class TestDatasetPermissionServiceGetPartialMemberList:
         Test retrieving partial member list with single member.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         user, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
-        dataset = DatasetPermissionTestDataFactory.create_dataset(tenant.id, owner.id)
+        dataset = DatasetPermissionTestDataFactory.create_dataset(db_session_with_containers, tenant.id, owner.id)
 
         expected_account_ids = [user.id]
-        DatasetPermissionTestDataFactory.create_dataset_permission(dataset.id, user.id, tenant.id)
+        DatasetPermissionTestDataFactory.create_dataset_permission(
+            db_session_with_containers, dataset.id, user.id, tenant.id
+        )
 
         # Act
         result = DatasetPermissionService.get_dataset_partial_member_list(dataset.id)
@@ -166,8 +181,10 @@ class TestDatasetPermissionServiceGetPartialMemberList:
         Test retrieving partial member list when no members exist.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
-        dataset = DatasetPermissionTestDataFactory.create_dataset(tenant.id, owner.id)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
+        dataset = DatasetPermissionTestDataFactory.create_dataset(db_session_with_containers, tenant.id, owner.id)
 
         # Act
         result = DatasetPermissionService.get_dataset_partial_member_list(dataset.id)
@@ -185,16 +202,20 @@ class TestDatasetPermissionServiceUpdatePartialMemberList:
         Test adding new partial members to a dataset.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         member_1, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
         member_2, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
-        dataset = DatasetPermissionTestDataFactory.create_dataset(tenant.id, owner.id)
+        dataset = DatasetPermissionTestDataFactory.create_dataset(db_session_with_containers, tenant.id, owner.id)
         user_list = DatasetPermissionTestDataFactory.build_user_list_payload([member_1.id, member_2.id])
 
         # Act
@@ -209,24 +230,30 @@ class TestDatasetPermissionServiceUpdatePartialMemberList:
         Test replacing existing partial members with new ones.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         old_member_1, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
         old_member_2, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
         new_member_1, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
         new_member_2, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
-        dataset = DatasetPermissionTestDataFactory.create_dataset(tenant.id, owner.id)
+        dataset = DatasetPermissionTestDataFactory.create_dataset(db_session_with_containers, tenant.id, owner.id)
 
         old_users = DatasetPermissionTestDataFactory.build_user_list_payload([old_member_1.id, old_member_2.id])
         DatasetPermissionService.update_partial_member_list(tenant.id, dataset.id, old_users)
@@ -245,16 +272,20 @@ class TestDatasetPermissionServiceUpdatePartialMemberList:
         Test updating with empty member list (clearing all members).
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         member_1, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
         member_2, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
-        dataset = DatasetPermissionTestDataFactory.create_dataset(tenant.id, owner.id)
+        dataset = DatasetPermissionTestDataFactory.create_dataset(db_session_with_containers, tenant.id, owner.id)
         users = DatasetPermissionTestDataFactory.build_user_list_payload([member_1.id, member_2.id])
         DatasetPermissionService.update_partial_member_list(tenant.id, dataset.id, users)
 
@@ -270,16 +301,20 @@ class TestDatasetPermissionServiceUpdatePartialMemberList:
         Test error handling and rollback on database error.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         existing_member, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
         replacement_member, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
-        dataset = DatasetPermissionTestDataFactory.create_dataset(tenant.id, owner.id)
+        dataset = DatasetPermissionTestDataFactory.create_dataset(db_session_with_containers, tenant.id, owner.id)
         DatasetPermissionService.update_partial_member_list(
             tenant.id,
             dataset.id,
@@ -319,16 +354,20 @@ class TestDatasetPermissionServiceClearPartialMemberList:
         Test successful clearing of partial member list.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         member_1, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
         member_2, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
-        dataset = DatasetPermissionTestDataFactory.create_dataset(tenant.id, owner.id)
+        dataset = DatasetPermissionTestDataFactory.create_dataset(db_session_with_containers, tenant.id, owner.id)
         users = DatasetPermissionTestDataFactory.build_user_list_payload([member_1.id, member_2.id])
         DatasetPermissionService.update_partial_member_list(tenant.id, dataset.id, users)
 
@@ -344,8 +383,10 @@ class TestDatasetPermissionServiceClearPartialMemberList:
         Test clearing partial member list when no members exist.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
-        dataset = DatasetPermissionTestDataFactory.create_dataset(tenant.id, owner.id)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
+        dataset = DatasetPermissionTestDataFactory.create_dataset(db_session_with_containers, tenant.id, owner.id)
 
         # Act
         DatasetPermissionService.clear_partial_member_list(dataset.id)
@@ -359,16 +400,20 @@ class TestDatasetPermissionServiceClearPartialMemberList:
         Test error handling and rollback on database error.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         member_1, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
         member_2, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
-        dataset = DatasetPermissionTestDataFactory.create_dataset(tenant.id, owner.id)
+        dataset = DatasetPermissionTestDataFactory.create_dataset(db_session_with_containers, tenant.id, owner.id)
         users = DatasetPermissionTestDataFactory.build_user_list_payload([member_1.id, member_2.id])
         DatasetPermissionService.update_partial_member_list(tenant.id, dataset.id, users)
         rollback_called = {"count": 0}
@@ -401,11 +446,15 @@ class TestDatasetServiceCheckDatasetPermission:
 
     def test_check_dataset_permission_different_tenant_should_fail(self, db_session_with_containers: Session):
         """Test that users from different tenants cannot access dataset."""
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
-        other_user, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.EDITOR)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
+        other_user, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.EDITOR
+        )
 
         dataset = DatasetPermissionTestDataFactory.create_dataset(
-            tenant.id, owner.id, permission=DatasetPermissionEnum.ALL_TEAM
+            db_session_with_containers, tenant.id, owner.id, permission=DatasetPermissionEnum.ALL_TEAM
         )
 
         with pytest.raises(NoPermissionError):
@@ -413,36 +462,42 @@ class TestDatasetServiceCheckDatasetPermission:
 
     def test_check_dataset_permission_owner_can_access_any_dataset(self, db_session_with_containers: Session):
         """Test that tenant owners can access any dataset regardless of permission level."""
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         creator, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
-            role=TenantAccountRole.NORMAL, tenant=tenant
+            db_session_with_containers, role=TenantAccountRole.NORMAL, tenant=tenant
         )
 
         dataset = DatasetPermissionTestDataFactory.create_dataset(
-            tenant.id, creator.id, permission=DatasetPermissionEnum.ONLY_ME
+            db_session_with_containers, tenant.id, creator.id, permission=DatasetPermissionEnum.ONLY_ME
         )
 
         DatasetService.check_dataset_permission(dataset, owner)
 
     def test_check_dataset_permission_only_me_creator_can_access(self, db_session_with_containers: Session):
         """Test ONLY_ME permission allows only the dataset creator to access."""
-        creator, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.EDITOR)
+        creator, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.EDITOR
+        )
 
         dataset = DatasetPermissionTestDataFactory.create_dataset(
-            tenant.id, creator.id, permission=DatasetPermissionEnum.ONLY_ME
+            db_session_with_containers, tenant.id, creator.id, permission=DatasetPermissionEnum.ONLY_ME
         )
 
         DatasetService.check_dataset_permission(dataset, creator)
 
     def test_check_dataset_permission_only_me_others_cannot_access(self, db_session_with_containers: Session):
         """Test ONLY_ME permission denies access to non-creators."""
-        creator, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.NORMAL)
+        creator, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.NORMAL
+        )
         other, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
-            role=TenantAccountRole.NORMAL, tenant=tenant
+            db_session_with_containers, role=TenantAccountRole.NORMAL, tenant=tenant
         )
 
         dataset = DatasetPermissionTestDataFactory.create_dataset(
-            tenant.id, creator.id, permission=DatasetPermissionEnum.ONLY_ME
+            db_session_with_containers, tenant.id, creator.id, permission=DatasetPermissionEnum.ONLY_ME
         )
 
         with pytest.raises(NoPermissionError):
@@ -450,13 +505,15 @@ class TestDatasetServiceCheckDatasetPermission:
 
     def test_check_dataset_permission_all_team_allows_access(self, db_session_with_containers: Session):
         """Test ALL_TEAM permission allows any team member to access the dataset."""
-        creator, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.NORMAL)
+        creator, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.NORMAL
+        )
         member, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
-            role=TenantAccountRole.NORMAL, tenant=tenant
+            db_session_with_containers, role=TenantAccountRole.NORMAL, tenant=tenant
         )
 
         dataset = DatasetPermissionTestDataFactory.create_dataset(
-            tenant.id, creator.id, permission=DatasetPermissionEnum.ALL_TEAM
+            db_session_with_containers, tenant.id, creator.id, permission=DatasetPermissionEnum.ALL_TEAM
         )
 
         DatasetService.check_dataset_permission(dataset, member)
@@ -468,18 +525,24 @@ class TestDatasetServiceCheckDatasetPermission:
         Test that user with explicit permission can access partial_members dataset.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         user, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
 
         dataset = DatasetPermissionTestDataFactory.create_dataset(
+            db_session_with_containers,
             tenant.id,
             owner.id,
             permission=DatasetPermissionEnum.PARTIAL_TEAM,
         )
-        DatasetPermissionTestDataFactory.create_dataset_permission(dataset.id, user.id, tenant.id)
+        DatasetPermissionTestDataFactory.create_dataset_permission(
+            db_session_with_containers, dataset.id, user.id, tenant.id
+        )
 
         # Act (should not raise)
         DatasetService.check_dataset_permission(dataset, user)
@@ -495,13 +558,17 @@ class TestDatasetServiceCheckDatasetPermission:
         Test error when user without permission tries to access partial_members dataset.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         user, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
 
         dataset = DatasetPermissionTestDataFactory.create_dataset(
+            db_session_with_containers,
             tenant.id,
             owner.id,
             permission=DatasetPermissionEnum.PARTIAL_TEAM,
@@ -513,10 +580,12 @@ class TestDatasetServiceCheckDatasetPermission:
 
     def test_check_dataset_permission_partial_team_creator_can_access(self, db_session_with_containers: Session):
         """Test PARTIAL_TEAM permission allows creator to access without explicit permission."""
-        creator, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.EDITOR)
+        creator, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.EDITOR
+        )
 
         dataset = DatasetPermissionTestDataFactory.create_dataset(
-            tenant.id, creator.id, permission=DatasetPermissionEnum.PARTIAL_TEAM
+            db_session_with_containers, tenant.id, creator.id, permission=DatasetPermissionEnum.PARTIAL_TEAM
         )
 
         DatasetService.check_dataset_permission(dataset, creator)
@@ -532,18 +601,24 @@ class TestDatasetServiceCheckDatasetOperatorPermission:
         Test that user with explicit permission can access partial_members dataset.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         user, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
 
         dataset = DatasetPermissionTestDataFactory.create_dataset(
+            db_session_with_containers,
             tenant.id,
             owner.id,
             permission=DatasetPermissionEnum.PARTIAL_TEAM,
         )
-        DatasetPermissionTestDataFactory.create_dataset_permission(dataset.id, user.id, tenant.id)
+        DatasetPermissionTestDataFactory.create_dataset_permission(
+            db_session_with_containers, dataset.id, user.id, tenant.id
+        )
 
         # Act (should not raise)
         DatasetService.check_dataset_operator_permission(user=user, dataset=dataset)
@@ -559,13 +634,17 @@ class TestDatasetServiceCheckDatasetOperatorPermission:
         Test error when user without permission tries to access partial_members dataset.
         """
         # Arrange
-        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(role=TenantAccountRole.OWNER)
+        owner, tenant = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers, role=TenantAccountRole.OWNER
+        )
         user, _ = DatasetPermissionTestDataFactory.create_account_with_tenant(
+            db_session_with_containers,
             role=TenantAccountRole.NORMAL,
             tenant=tenant,
         )
 
         dataset = DatasetPermissionTestDataFactory.create_dataset(
+            db_session_with_containers,
             tenant.id,
             owner.id,
             permission=DatasetPermissionEnum.PARTIAL_TEAM,
